@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SecretShare | Secure & Compressed</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+
+    <style>
+      /* (Styles remain the same as previous version) */
+      body {
+        font-family: "Courier New", monospace;
+        background: #0a0a0a;
+        color: #00ff41;
+        max-width: 700px;
+        margin: 40px auto;
+        padding: 20px;
+        line-height: 1.6;
+      }
+      textarea,
+      input {
+        width: 100%;
+        background: #111;
+        border: 1px solid #00ff41;
+        color: #00ff41;
+        padding: 12px;
+        margin: 10px 0;
+        box-sizing: border-box;
+        outline: none;
+      }
+      button {
+        background: #00ff41;
+        color: #000;
+        border: none;
+        padding: 12px 20px;
+        cursor: pointer;
+        font-weight: bold;
+        width: 100%;
+        transition: 0.2s;
+        margin: 10px 0;
+      }
+      button:hover {
+        background: #008f11;
+        color: #fff;
+      }
+      .hidden {
+        display: none;
+      }
+      #link-output {
+        border: 1px dashed #00ff41;
+        padding: 20px;
+        margin-top: 20px;
+        text-align: center;
+      }
+      #qrcode {
+        margin: 20px auto;
+        padding: 10px;
+        background: white;
+        width: fit-content;
+        border-radius: 4px;
+      }
+      .url-box {
+        word-break: break-all;
+        margin: 15px 0;
+        font-size: 0.8em;
+        opacity: 0.8;
+      }
+      .copy-btn {
+        background: #333;
+        color: #00ff41;
+        border: 1px solid #00ff41;
+        margin-bottom: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>// SecretShare</h2>
+    <p style="font-size: 0.8em; opacity: 0.6">
+      Compressed with Pako. Encrypted with Web Crypto. Zero backend.
+    </p>
+
+    <div id="encrypt-ui">
+      <textarea
+        id="msg"
+        rows="8"
+        placeholder="Type your long secret message..."
+      ></textarea>
+      <input
+        type="password"
+        id="pass"
+        placeholder="Secret decryption password"
+      />
+      <button onclick="encryptMessage()">GENERATE SHORT SECURE LINK</button>
+
+      <div id="link-output" class="hidden">
+        <div id="qrcode"></div>
+        <div class="url-box" id="share-url-text"></div>
+        <button class="copy-btn" onclick="copyToClipboard()">COPY LINK</button>
+      </div>
+    </div>
+
+    <div id="decrypt-ui" class="hidden">
+      <input
+        type="password"
+        id="decrypt-pass"
+        placeholder="Password to unlock"
+      />
+      <button onclick="decryptMessage()">DECRYPT & DECOMPRESS</button>
+      <div
+        id="decrypted-msg"
+        class="hidden"
+        style="
+          white-space: pre-wrap;
+          margin-top: 20px;
+          background: #111;
+          padding: 15px;
+          border-left: 3px solid #00ff41;
+        "
+      ></div>
+    </div>
+
+    <script>
+      const encoder = new TextEncoder();
+      const decoder = new TextDecoder();
+
+      window.onload = () => {
+        if (window.location.hash.length > 1) {
+          document.getElementById("encrypt-ui").classList.add("hidden");
+          document.getElementById("decrypt-ui").classList.remove("hidden");
+        }
+      };
+
+      async function deriveKey(password, salt) {
+        const baseKey = await crypto.subtle.importKey(
+          "raw",
+          encoder.encode(password),
+          "PBKDF2",
+          false,
+          ["deriveKey"],
+        );
+        return crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt, iterations: 100000, hash: "SHA-256" },
+          baseKey,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["encrypt", "decrypt"],
+        );
+      }
+
+      async function encryptMessage() {
+        const text = document.getElementById("msg").value;
+        const password = document.getElementById("pass").value;
+        if (!text || !password) return alert("Missing data!");
+
+        // 1. COMPRESS
+        const compressed = pako.deflate(text);
+
+        // 2. ENCRYPT
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await deriveKey(password, salt);
+        const encrypted = await crypto.subtle.encrypt(
+          { name: "AES-GCM", iv },
+          key,
+          compressed,
+        );
+
+        // 3. PACKAGE
+        const combined = new Uint8Array(
+          salt.length + iv.length + encrypted.byteLength,
+        );
+        combined.set(salt);
+        combined.set(iv, salt.length);
+        combined.set(new Uint8Array(encrypted), salt.length + iv.length);
+
+        const base64 = btoa(String.fromCharCode(...combined));
+        const url =
+          window.location.origin + window.location.pathname + "#" + base64;
+
+        document.getElementById("share-url-text").innerText = url;
+        document.getElementById("link-output").classList.remove("hidden");
+
+        const qrContainer = document.getElementById("qrcode");
+        qrContainer.innerHTML = "";
+        new QRCode(qrContainer, { text: url, width: 160, height: 160 });
+      }
+
+      async function decryptMessage() {
+        const password = document.getElementById("decrypt-pass").value;
+        const base64 = window.location.hash.substring(1);
+
+        try {
+          const combined = Uint8Array.from(atob(base64), (c) =>
+            c.charCodeAt(0),
+          );
+          const salt = combined.slice(0, 16);
+          const iv = combined.slice(16, 28);
+          const encryptedData = combined.slice(28);
+
+          const key = await deriveKey(password, salt);
+
+          // 1. DECRYPT
+          const decrypted = await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv },
+            key,
+            encryptedData,
+          );
+
+          // 2. DECOMPRESS
+          const decompressed = pako.inflate(new Uint8Array(decrypted), {
+            to: "string",
+          });
+
+          const display = document.getElementById("decrypted-msg");
+          display.innerText = decompressed;
+          display.classList.remove("hidden");
+        } catch (e) {
+          console.error(e);
+          alert("Failure. Wrong password or corrupted data.");
+        }
+      }
+
+      async function copyToClipboard() {
+        const url = document.getElementById("share-url-text").innerText;
+        await navigator.clipboard.writeText(url);
+        alert("Copied!");
+      }
+    </script>
+  </body>
+</html>
