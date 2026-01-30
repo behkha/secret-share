@@ -9,7 +9,9 @@
 
 Inspired by [textarea](https://github.com/antonmedv/textarea), **SecretShare** allows you to create secure, encrypted notes that are stored directly in the URL hash. Since the data never leaves the client-side, not even the host (like GitHub Pages) can read your messages.
 
-[Live Demo](https://www.google.com/search?q=%23) ---
+[Live Demo](https://behkha.github.io/secret-share) 
+
+---
 
 ## ✨ Features
 
