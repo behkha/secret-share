@@ -84,14 +84,14 @@
       <textarea
         id="msg"
         rows="8"
-        placeholder="Type your long secret message..."
+        placeholder="Type your secret message..."
       ></textarea>
       <input
         type="password"
         id="pass"
-        placeholder="Secret decryption password"
+        placeholder="Password"
       />
-      <button onclick="encryptMessage()">GENERATE SHORT SECURE LINK</button>
+      <button onclick="encryptMessage()">GENERATE SECURE LINK</button>
 
       <div id="link-output" class="hidden">
         <div id="qrcode"></div>
@@ -106,7 +106,7 @@
         id="decrypt-pass"
         placeholder="Password to unlock"
       />
-      <button onclick="decryptMessage()">DECRYPT & DECOMPRESS</button>
+      <button onclick="decryptMessage()">DECRYPT</button>
       <div
         id="decrypted-msg"
         class="hidden"
